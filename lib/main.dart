@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'services/config_service.dart';
 import 'services/database_service.dart';
 import 'services/llm_service.dart';
@@ -10,6 +12,15 @@ import 'app.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 桌面端需要用 FFI 初始化 databaseFactory，否则会报错：
+  // "databaseFactory not initialized"
+  if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.linux ||
+      defaultTargetPlatform == TargetPlatform.macOS)) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
 
   final configService = ConfigService();
   final databaseService = DatabaseService();
