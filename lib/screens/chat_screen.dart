@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../models/message.dart';
 import '../models/personality.dart';
 import '../services/config_service.dart';
 import '../services/database_service.dart';
+import '../services/image_gen_service.dart';
 import '../services/llm_service.dart';
 import '../services/memory_service.dart';
 import '../services/personality_service.dart';
 import '../services/humanizer_service.dart';
+import '../services/sticker_service.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/typing_indicator.dart';
@@ -71,15 +73,16 @@ class ChatScreenState extends State<ChatScreen> {
   }
 
   void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+    // 使用 jumpTo 避免动画冲突导致滚动位置异常
+    try {
+      if (_scrollController.hasClients && _scrollController.position.pixels < _scrollController.position.maxScrollExtent - 50) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+          }
+        });
       }
-    });
+    } catch (_) {}
   }
 
   Future<void> _sendMessage(String text) async {
@@ -182,6 +185,10 @@ class ChatScreenState extends State<ChatScreen> {
           );
         }
       });
+
+      // 检测是否需要生图 + 偶尔发收藏的表情包
+      _maybeGenerateImage(text);
+      _maybeSendSticker();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -201,14 +208,14 @@ class ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _sendImage(File file) async {
+  Future<void> _sendImage(XFile file) async {
     if (_sessionId == null || _isLoading) return;
 
     final db = context.read<DatabaseService>();
     final bytes = await file.readAsBytes();
     final base64 = base64Encode(bytes);
 
-    final imgMsg = Message(
+    var imgMsg = Message(
       sessionId: _sessionId!,
       role: 'user',
       messageType: 'image',
@@ -219,11 +226,129 @@ class ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     final imgId = await db.insertMessage(imgMsg);
-    imgMsg.copyWith(id: imgId);
+    // 保存为用户表情包
+    final stickerService = context.read<StickerService>();
+    stickerService.addSticker(base64, '用户发的表情包${stickerService.count + 1}');
 
-    // 可选：将图片发给 AI 让 TA 回应
-    // 这里简化处理：AI 回复文字
-    _sendMessage('[图片]');
+    imgMsg = imgMsg.copyWith(id: imgId);
+    _messages[_messages.length - 1] = imgMsg;
+
+    // 机器人回应图片
+    final response = await _generateBotResponse('我发了一张图片');
+    if (response != null && mounted) {
+      final botMsg = Message(sessionId: _sessionId!, role: 'assistant', content: response);
+      await db.insertMessage(botMsg);
+      setState(() => _messages.add(botMsg));
+      _scrollToBottom();
+
+      // 偶尔回一个表情包（偷表情包效果）
+      _maybeSendSticker();
+    }
+  }
+
+  /// 机器人回应用户消息
+  Future<String?> _generateBotResponse(String userText) async {
+    if (_sessionId == null) return null;
+    final llm = context.read<LlmService>();
+    final memoryService = context.read<MemoryService>();
+    final humanizer = context.read<HumanizerService>();
+    final personalityService = context.read<PersonalityService>();
+
+    try {
+      final p = _personality ?? await personalityService.getPersonality(_sessionId!);
+      if (p == null) return null;
+
+      final relevantMemories = await memoryService.getRelevantMemories(_sessionId!, userInput: userText, count: 10);
+      final recentHistory = _messages.length > 30 ? _messages.sublist(_messages.length - 30) : List<Message>.from(_messages);
+      final moodParams = humanizer.rollMoodParams();
+
+      final fullResponse = StringBuffer();
+      final stream = llm.chatStream(
+        sessionId: _sessionId!,
+        userMessage: userText,
+        personality: p,
+        relevantMemories: relevantMemories,
+        moodParams: moodParams,
+        recentHistory: recentHistory,
+      );
+
+      await for (final chunk in stream) {
+        fullResponse.write(chunk);
+      }
+
+      var response = fullResponse.toString();
+      response = humanizer.postProcess(response);
+      response = humanizer.addColloquialTouch(response);
+      return response;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 偶尔发一个收藏的表情包（偷表情包效果）
+  void _maybeSendSticker() {
+    final stickerService = context.read<StickerService>();
+    if (stickerService.count == 0) return;
+    // 15% 概率发一个表情包
+    if (DateTime.now().millisecond % 100 > 15) return;
+
+    final sticker = stickerService.getRandom();
+    if (sticker == null) return;
+
+    final db = context.read<DatabaseService>();
+    final imgMsg = Message(
+      sessionId: _sessionId!,
+      role: 'assistant',
+      messageType: 'image',
+      imageBase64: sticker.base64,
+      content: '',
+    );
+    db.insertMessage(imgMsg);
+    if (mounted) {
+      setState(() => _messages.add(imgMsg));
+      _scrollToBottom();
+    }
+  }
+
+  /// 检测是否需要生成图片，如果是则调用 Seedream
+  Future<void> _maybeGenerateImage(String userText) async {
+    final drawPattern = RegExp(r'(画|生成|做)(一[张个幅]|一下)?[「」\s]*(\S.{1,50}?)(?:[图片照片]|吧|呗|吗|啊|呢)?$');
+    final match = drawPattern.firstMatch(userText.trim());
+    if (match == null) return;
+
+    final config = context.read<ConfigService>();
+    final db = context.read<DatabaseService>();
+    final apiKey = await config.getImageGenApiKey();
+    final model = await config.getImageGenModel();
+    if (apiKey == null || apiKey.isEmpty || model == null || model.isEmpty) return;
+
+    final prompt = match.group(3)?.trim() ?? userText;
+    try {
+      final genService = ImageGenService();
+      final bytes = await genService.generateImage(prompt, apiKey: apiKey, model: model);
+      final base64 = base64Encode(bytes);
+
+      final imgMsg = Message(
+        sessionId: _sessionId!,
+        role: 'assistant',
+        messageType: 'image',
+        imageBase64: base64,
+        content: '给你画好了~',
+      );
+      await db.insertMessage(imgMsg);
+      if (mounted) {
+        setState(() => _messages.add(imgMsg));
+        _scrollToBottom();
+      }
+    } catch (_) {
+      // 生图失败不打断对话
+      if (mounted) {
+        final errMsg = Message(sessionId: _sessionId!, role: 'assistant',
+            content: '画图失败了，可能是生图服务暂时不可用');
+        await db.insertMessage(errMsg);
+        setState(() => _messages.add(errMsg));
+      }
+    }
   }
 
   @override

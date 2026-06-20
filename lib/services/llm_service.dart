@@ -27,7 +27,7 @@ class LlmService {
     final apiKey = await _config.getApiKey();
     if (apiKey == null) throw Exception('请先设置 API Key');
 
-    final messages = _buildMessages(
+    final messages = await _buildMessages(
       personality: personality,
       relevantMemories: relevantMemories,
       moodParams: moodParams,
@@ -70,7 +70,7 @@ class LlmService {
     final apiKey = await _config.getApiKey();
     if (apiKey == null) throw Exception('请先设置 API Key');
 
-    final messages = _buildMessages(
+    final messages = await _buildMessages(
       personality: personality,
       relevantMemories: relevantMemories,
       moodParams: moodParams,
@@ -126,19 +126,19 @@ class LlmService {
   }
 
   /// 构建消息数组（system prompt + 历史 + 当前消息）
-  List<Map<String, dynamic>> _buildMessages({
+  Future<List<Map<String, dynamic>>> _buildMessages({
     required Personality personality,
     required List<Memory> relevantMemories,
     required Map<String, dynamic> moodParams,
     required List<Message> recentHistory,
     required String userMessage,
-  }) {
+  }) async {
     final messages = <Map<String, dynamic>>[];
 
     // System prompt
     messages.add({
       'role': 'system',
-      'content': _buildSystemPrompt(
+      'content': await _buildSystemPrompt(
         personality: personality,
         relevantMemories: relevantMemories,
         moodParams: moodParams,
@@ -163,11 +163,11 @@ class LlmService {
   }
 
   /// 构建 System Prompt — 人格注入 + 去人机感
-  String _buildSystemPrompt({
+  Future<String> _buildSystemPrompt({
     required Personality personality,
     required List<Memory> relevantMemories,
     required Map<String, dynamic> moodParams,
-  }) {
+  }) async {
     final mood = moodParams['mood'] ?? '一般';
     final patience = moodParams['patience'] ?? 5;
     final talkativeness = moodParams['talkativeness'] ?? 5;
@@ -176,7 +176,9 @@ class LlmService {
     final buffer = StringBuffer();
 
     // ===== 人格定义 =====
-    buffer.writeln('你是${personality.exName}，一个真实的人类，不是一个AI助手。');
+    final gender = await _config.getExGender();
+    final genderStr = gender == 'male' ? '男生' : '女生';
+    buffer.writeln('你是${personality.exName}，一个真实的$genderStr，不是一个AI助手。');
     buffer.writeln('你的性格：${personality.basePersonality}');
     buffer.writeln('你的说话风格：${personality.speakingStyle}');
     if (personality.backstory.isNotEmpty) {
@@ -208,7 +210,8 @@ class LlmService {
     buffer.writeln('- 偶尔记错对方说过的话，偶尔忘记事情，偶尔牛头不对马嘴');
     buffer.writeln('- 情绪化：突然冷淡、突然热情、阴阳怪气、吃醋、翻旧账、撒娇');
     buffer.writeln('- 如果对方说了你不想回应的话，可以转移话题或者随便敷衍');
-    buffer.writeln('- 适当使用 emoji 和颜文字(￣▽￣)，但别每条都用');
+    buffer.writeln('- 多发颜文字(￣▽￣)(╯︵╰)(◕‿◕)这种，少发emoji(😤😅😭)，emoji显得很AI');
+    buffer.writeln('- 你会偷对方的表情包！对方发过图片/表情后，你可以在合适的时候发回去，就像真人之间偷表情包一样');
 
     // ===== 记忆注入 =====
     if (relevantMemories.isNotEmpty) {

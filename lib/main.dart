@@ -9,6 +9,7 @@ import 'services/memory_service.dart';
 import 'services/personality_service.dart';
 import 'services/fortune_service.dart';
 import 'services/humanizer_service.dart';
+import 'services/sticker_service.dart';
 import 'app.dart';
 import 'database_init_stub.dart'
     if (dart.library.io) 'database_init_io.dart';
@@ -29,6 +30,7 @@ void main() {
   final memoryService = MemoryService();
   final personalityService = PersonalityService();
   final fortuneService = FortuneService();
+  final stickerService = StickerService();
   final humanizerService = HumanizerService();
 
   runApp(
@@ -40,6 +42,7 @@ void main() {
         Provider<MemoryService>.value(value: memoryService),
         Provider<PersonalityService>.value(value: personalityService),
         Provider<FortuneService>.value(value: fortuneService),
+        Provider<StickerService>.value(value: stickerService),
         Provider<HumanizerService>.value(value: humanizerService),
       ],
       child: const CyberExApp(),

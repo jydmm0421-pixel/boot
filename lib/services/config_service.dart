@@ -8,7 +8,9 @@ class ConfigService {
   static const _keySessionId = 'current_session_id';
   static const _keyMode = 'personality_mode';
   static const _keyExName = 'ex_name';
+  static const _keyExGender = 'ex_gender';
   static const _keyImageGenKey = 'image_gen_api_key';
+  static const _keyImageGenModel = 'image_gen_model';
   static const _keyUserAvatar = 'user_avatar_base64';
   static const _keyBotAvatar = 'bot_avatar_base64';
 
@@ -72,6 +74,18 @@ class ConfigService {
     await prefs.setString(_keyExName, name);
   }
 
+  // ---- 机器人性别 ----
+
+  Future<String> getExGender() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyExGender) ?? 'female';
+  }
+
+  Future<void> setExGender(String gender) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyExGender, gender);
+  }
+
   // ---- 生图 API Key ----
 
   Future<String?> getImageGenApiKey() async {
@@ -80,6 +94,16 @@ class ConfigService {
 
   Future<void> setImageGenApiKey(String key) async {
     await _secureStorage.write(key: _keyImageGenKey, value: key);
+  }
+
+  Future<String?> getImageGenModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyImageGenModel);
+  }
+
+  Future<void> setImageGenModel(String model) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyImageGenModel, model);
   }
 
   // ---- 头像（base64，存在 SharedPreferences） ----

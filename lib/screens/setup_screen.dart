@@ -22,6 +22,7 @@ class _SetupScreenState extends State<SetupScreen> {
 
   String _mode = 'cultivate'; // 'cultivate' | 'import'
   String _basePersonality = '温柔';
+  String _exGender = 'female';
   String? _chatFilePath;
   String? _chatFileContent;
   String? _selectedSpeaker; // 用户选择的目标说话人
@@ -52,28 +53,18 @@ class _SetupScreenState extends State<SetupScreen> {
     final content = String.fromCharCodes(bytes);
     final parsed = parseChat(content);
 
-    if (parsed.speakers.isEmpty) {
-      setState(() {
-        _chatFilePath = result.files.first.name;
-        _chatFileContent = content;
-        _selectedSpeaker = null;
-      });
-      return;
-    }
-
-    // 检测到说话人，弹出选择对话框
+    // 弹出说话人选择对话框
     if (mounted) {
       final speaker = await _showSpeakerDialog(parsed);
       if (speaker != null) {
-        // 只保留目标说话人的消息
+        // 过滤目标说话人的消息
         final filtered = filterMessagesBySpeaker(content, speaker);
         setState(() {
           _chatFilePath = result.files.first.name;
-          _chatFileContent = filtered;
+          _chatFileContent = filtered.isNotEmpty ? filtered : content;
           _selectedSpeaker = speaker;
         });
       } else {
-        // 用户取消，保留原始内容
         setState(() {
           _chatFilePath = result.files.first.name;
           _chatFileContent = content;
@@ -85,54 +76,86 @@ class _SetupScreenState extends State<SetupScreen> {
 
   /// 显示说话人选择对话框
   Future<String?> _showSpeakerDialog(ChatParseResult parsed) async {
-    String selected = parsed.speakers.first.name;
+    final speakers = parsed.speakers;
+    final manualController = TextEditingController();
+    String selected = speakers.isNotEmpty ? speakers.first.name : '';
+    bool isManual = speakers.isEmpty;
 
     return showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        final speakers = parsed.speakers;
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('选择模仿对象'),
+              title: Text(speakers.isNotEmpty ? '选择模仿对象' : '输入模仿对象名字'),
               content: SizedBox(
                 width: double.maxFinite,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '检测到以下说话人，请选择你想让AI模仿的一方：',
-                      style: TextStyle(fontSize: 13, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 12),
-                    ...speakers.map((s) => ListTile(
-                          leading: Icon(
-                            selected == s.name
-                                ? Icons.radio_button_checked
-                                : Icons.radio_button_unchecked,
-                            color: selected == s.name
-                                ? Theme.of(context).colorScheme.primary
-                                : Colors.grey,
-                          ),
-                          title: Text(s.name,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600)),
-                          subtitle: Text('${s.messageCount} 条消息'),
-                          onTap: () =>
-                              setDialogState(() => selected = s.name),
-                          dense: true,
-                        )),
-                    if (speakers.length > 2)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          '（只显示消息最多的前${speakers.length}人）',
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.grey[400]),
-                        ),
+                    if (speakers.isNotEmpty) ...[
+                      const Text(
+                        '检测到以下说话人，请选择想让AI模仿的一方：',
+                        style: TextStyle(fontSize: 13, color: Colors.grey),
                       ),
+                      const SizedBox(height: 12),
+                      ...speakers.map((s) => ListTile(
+                            leading: Icon(
+                              !isManual && selected == s.name
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_unchecked,
+                              color: !isManual && selected == s.name
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.grey,
+                            ),
+                            title: Text(s.name,
+                                style: const TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: Text('${s.messageCount} 条消息'),
+                            onTap: () => setDialogState(() {
+                              selected = s.name;
+                              isManual = false;
+                            }),
+                            dense: true,
+                          )),
+                      const Divider(),
+                      ListTile(
+                        leading: Icon(
+                          isManual ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                          color: isManual ? Theme.of(context).colorScheme.primary : Colors.grey,
+                        ),
+                        title: const Text('手动输入', style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: const Text('自己指定名字'),
+                        onTap: () => setDialogState(() => isManual = true),
+                        dense: true,
+                      ),
+                      if (isManual) ...[
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: manualController,
+                          decoration: InputDecoration(
+                            hintText: '输入要模仿的人的名字',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            isDense: true,
+                          ),
+                          onChanged: (v) => selected = v.trim(),
+                        ),
+                      ],
+                    ] else ...[
+                      const Text('未自动检测到说话人，请手动输入',
+                          style: TextStyle(fontSize: 13, color: Colors.grey)),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: manualController,
+                        decoration: InputDecoration(
+                          hintText: '输入要模仿的人的名字',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onChanged: (v) => selected = v.trim(),
+                        autofocus: true,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -142,8 +165,12 @@ class _SetupScreenState extends State<SetupScreen> {
                   child: const Text('取消'),
                 ),
                 FilledButton(
-                  onPressed: () => Navigator.pop(ctx, selected),
-                  child: Text('选择 $selected'),
+                  onPressed: () {
+                    final name = isManual ? manualController.text.trim() : selected;
+                    if (name.isEmpty) return;
+                    Navigator.pop(ctx, name);
+                  },
+                  child: const Text('确定'),
                 ),
               ],
             );
@@ -185,6 +212,7 @@ class _SetupScreenState extends State<SetupScreen> {
       await config.setExName(_nameController.text.trim().isEmpty
           ? 'TA'
           : _nameController.text.trim());
+      await config.setExGender(_exGender);
 
       // 创建人格
       if (_mode == 'import' && _chatFileContent != null) {
@@ -317,6 +345,24 @@ class _SetupScreenState extends State<SetupScreen> {
                         prefixIcon: const Icon(Icons.person),
                       ),
                     ),
+                    const SizedBox(height: 12),
+
+                    _buildSectionTitle('性别'),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 8, children: [
+                      ChoiceChip(
+                        label: const Text('👩 女'),
+                        selected: _exGender == 'female',
+                        onSelected: (v) { if (v) setState(() => _exGender = 'female'); },
+                        selectedColor: Theme.of(context).colorScheme.primaryContainer,
+                      ),
+                      ChoiceChip(
+                        label: const Text('👨 男'),
+                        selected: _exGender == 'male',
+                        onSelected: (v) { if (v) setState(() => _exGender = 'male'); },
+                        selectedColor: Theme.of(context).colorScheme.primaryContainer,
+                      ),
+                    ]),
                     const SizedBox(height: 12),
 
                     if (_mode == 'cultivate') ...[

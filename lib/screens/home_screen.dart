@@ -47,9 +47,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ChatScreen(exName: _exName, userAvatar: _userAvatar, botAvatar: _botAvatar),
       MemoryScreen(key: _memoryKey),
       const FortuneScreen(),
-      SettingsScreen(onNameChanged: (name) {
-        setState(() => _exName = name);
-      }),
+      SettingsScreen(
+        onNameChanged: (name) => setState(() => _exName = name),
+        onAvatarChanged: _loadSettings,
+      ),
     ];
 
     return Scaffold(

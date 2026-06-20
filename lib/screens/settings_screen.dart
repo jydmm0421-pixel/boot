@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -15,8 +14,9 @@ import 'setup_screen.dart';
 /// 设置页
 class SettingsScreen extends StatefulWidget {
   final Function(String)? onNameChanged;
+  final VoidCallback? onAvatarChanged;
 
-  const SettingsScreen({super.key, this.onNameChanged});
+  const SettingsScreen({super.key, this.onNameChanged, this.onAvatarChanged});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -34,6 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   final _nameController = TextEditingController();
   final _imageGenKeyController = TextEditingController();
+  final _imageGenModelController = TextEditingController();
 
   @override
   void initState() {
@@ -52,6 +53,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final userAvatar = await config.getUserAvatar();
     final botAvatar = await config.getBotAvatar();
     final imageGenKey = await config.getImageGenApiKey();
+    final imageGenModel = await config.getImageGenModel();
 
     Personality? p;
     if (sessionId != null) {
@@ -68,6 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _botAvatar = botAvatar;
       _nameController.text = name;
       _imageGenKeyController.text = imageGenKey ?? '';
+      _imageGenModelController.text = imageGenModel ?? '';
     });
   }
 
@@ -201,10 +204,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         source: ImageSource.gallery, maxWidth: 256, maxHeight: 256, imageQuality: 80);
     if (file == null) return;
 
-    final bytes = await File(file.path).readAsBytes();
+    final bytes = await file.readAsBytes();
     final base64 = base64Encode(bytes);
     await config.setUserAvatar(base64);
-    if (mounted) setState(() => _userAvatar = base64);
+    if (mounted) {
+      setState(() => _userAvatar = base64);
+      widget.onAvatarChanged?.call();
+    }
   }
 
   Future<void> _generateBotAvatar() async {
@@ -231,6 +237,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _generatingAvatar = true);
 
     try {
+      final model = _imageGenModelController.text.trim();
+      if (model.isEmpty) {
+        setState(() => _generatingAvatar = false);
+        messenger.showSnackBar(
+          const SnackBar(content: Text('请先填写推理端点 ID'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+
       // 用 LLM 生成头像 prompt
       final llm = LlmService();
       final promptResult = await llm.chat(
@@ -242,10 +257,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         recentHistory: [],
       );
 
-      final prompt = '日系动漫头像，正面半身，$promptResult，简洁干净风格';
+      final gender = await config.getExGender();
+      final genderHint = gender == 'male' ? '男性' : '女性';
+      final prompt = '$genderHint动漫头像，正面半身，$promptResult，简洁干净风格';
 
       final genService = ImageGenService();
-      final imageBytes = await genService.generateImage(prompt, apiKey: apiKey);
+      final imageBytes = await genService.generateImage(prompt, apiKey: apiKey, model: model);
       final base64 = base64Encode(imageBytes);
 
       await config.setBotAvatar(base64);
@@ -254,6 +271,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _botAvatar = base64;
           _generatingAvatar = false;
         });
+        widget.onAvatarChanged?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('机器人头像已生成！')),
         );
@@ -269,12 +287,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveImageGenKey() async {
+    final config = context.read<ConfigService>();
     final key = _imageGenKeyController.text.trim();
-    await context.read<ConfigService>().setImageGenApiKey(key);
+    final model = _imageGenModelController.text.trim();
+    await config.setImageGenApiKey(key);
+    if (model.isNotEmpty) await config.setImageGenModel(model);
     setState(() => _hasImageGenKey = key.isNotEmpty);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('生图 API Key 已保存')),
+        const SnackBar(content: Text('生图配置已保存')),
       );
     }
   }
@@ -316,6 +337,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _nameController.dispose();
     _imageGenKeyController.dispose();
+    _imageGenModelController.dispose();
     super.dispose();
   }
 
@@ -499,9 +521,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 24),
 
-          // 生图 API Key
-          _buildSection('生图 API (Doubao-Seedance)'),
+          // 生图 API
+          _buildSection('生图 API (火山方舟 Seedream)'),
+          const SizedBox(height: 4),
+          Text(
+            '在火山方舟控制台创建 Seedream 推理端点，获得端点 ID (ep-xxx)',
+            style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+          ),
           const SizedBox(height: 8),
+          // API Key
           Row(
             children: [
               Expanded(
@@ -509,9 +537,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   controller: _imageGenKeyController,
                   obscureText: true,
                   decoration: InputDecoration(
-                    hintText: '输入火山方舟 API Key',
+                    hintText: 'API Key',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    prefixIcon: const Icon(Icons.image),
+                    isDense: true,
                   ),
                 ),
               ),
@@ -519,18 +547,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               FilledButton(onPressed: _saveImageGenKey, child: const Text('保存')),
             ],
           ),
-          ListTile(
-            leading: Icon(
-              _hasImageGenKey ? Icons.check_circle : Icons.info_outline,
-              color: _hasImageGenKey ? Colors.green : Colors.grey,
-              size: 20,
+          const SizedBox(height: 8),
+          // 模型/端点ID
+          TextField(
+            controller: _imageGenModelController,
+            decoration: InputDecoration(
+              hintText: '推理端点 ID（如 ep-20250101-xxxxx）',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              isDense: true,
             ),
-            title: Text(
-              _hasImageGenKey ? '生图 API Key 已设置' : '未设置（无法使用生图功能）',
-              style: const TextStyle(fontSize: 13),
-            ),
-            dense: true,
           ),
+          if (_hasImageGenKey && _imageGenModelController.text.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('需在火山方舟控制台创建推理端点',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+            ),
 
           const SizedBox(height: 32),
 
