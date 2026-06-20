@@ -36,13 +36,16 @@ class PersonalityService {
   }
 
   /// 模式A：分析聊天记录，创建人格
+  /// [targetSpeaker] 可选，指定要分析的目标说话人名字
   Future<Personality> analyzeAndCreatePersonality({
     required String sessionId,
     required String exName,
     required String chatHistory,
+    String? targetSpeaker,
   }) async {
-    // 调用 AI 分析
-    final analysis = await _llm.analyzeChatHistory(chatHistory);
+    // 调用 AI 分析（传入目标说话人）
+    final analysis = await _llm.analyzeChatHistory(chatHistory,
+        targetSpeaker: targetSpeaker);
 
     // 解析 AI 返回的 JSON
     try {

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../services/config_service.dart';
 import '../services/personality_service.dart';
+import '../utils/chat_parser.dart';
 import 'home_screen.dart';
 
 /// 初始引导页：配置 API Key、选择模式、设置人设
@@ -23,6 +24,7 @@ class _SetupScreenState extends State<SetupScreen> {
   String _basePersonality = '温柔';
   String? _chatFilePath;
   String? _chatFileContent;
+  String? _selectedSpeaker; // 用户选择的目标说话人
   bool _loading = false;
   String? _error;
 
@@ -42,16 +44,113 @@ class _SetupScreenState extends State<SetupScreen> {
       allowedExtensions: ['txt', 'csv', 'json'],
       withData: true,
     );
-    if (result != null && result.files.isNotEmpty) {
-      final bytes = result.files.first.bytes;
-      if (bytes != null) {
-        final content = String.fromCharCodes(bytes);
+    if (result == null || result.files.isEmpty) return;
+
+    final bytes = result.files.first.bytes;
+    if (bytes == null) return;
+
+    final content = String.fromCharCodes(bytes);
+    final parsed = parseChat(content);
+
+    if (parsed.speakers.isEmpty) {
+      setState(() {
+        _chatFilePath = result.files.first.name;
+        _chatFileContent = content;
+        _selectedSpeaker = null;
+      });
+      return;
+    }
+
+    // 检测到说话人，弹出选择对话框
+    if (mounted) {
+      final speaker = await _showSpeakerDialog(parsed);
+      if (speaker != null) {
+        // 只保留目标说话人的消息
+        final filtered = filterMessagesBySpeaker(content, speaker);
+        setState(() {
+          _chatFilePath = result.files.first.name;
+          _chatFileContent = filtered;
+          _selectedSpeaker = speaker;
+        });
+      } else {
+        // 用户取消，保留原始内容
         setState(() {
           _chatFilePath = result.files.first.name;
           _chatFileContent = content;
+          _selectedSpeaker = null;
         });
       }
     }
+  }
+
+  /// 显示说话人选择对话框
+  Future<String?> _showSpeakerDialog(ChatParseResult parsed) async {
+    String selected = parsed.speakers.first.name;
+
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final speakers = parsed.speakers;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('选择模仿对象'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '检测到以下说话人，请选择你想让AI模仿的一方：',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    ...speakers.map((s) => ListTile(
+                          leading: Icon(
+                            selected == s.name
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                            color: selected == s.name
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.grey,
+                          ),
+                          title: Text(s.name,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600)),
+                          subtitle: Text('${s.messageCount} 条消息'),
+                          onTap: () =>
+                              setDialogState(() => selected = s.name),
+                          dense: true,
+                        )),
+                    if (speakers.length > 2)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '（只显示消息最多的前${speakers.length}人）',
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey[400]),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, selected),
+                  child: Text('选择 $selected'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _completeSetup() async {
@@ -93,6 +192,7 @@ class _SetupScreenState extends State<SetupScreen> {
           sessionId: sessionId,
           exName: _nameController.text.trim(),
           chatHistory: _chatFileContent!,
+          targetSpeaker: _selectedSpeaker,
         );
       } else {
         await personalityService.createInitialPersonality(
@@ -267,7 +367,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       if (_chatFileContent != null) ...[
                         const SizedBox(height: 8),
                         Text(
-                          '已加载 ${_chatFileContent!.length} 个字符',
+                          '已加载 ${_chatFileContent!.length} 个字符${_selectedSpeaker != null ? "，分析对象：$_selectedSpeaker" : ""}',
                           style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                         ),
                       ],

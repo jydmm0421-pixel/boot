@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import '../services/config_service.dart';
 import '../services/personality_service.dart';
 import '../models/personality.dart';
+import '../utils/chat_parser.dart';
 import 'setup_screen.dart';
 
 /// 设置页
@@ -82,16 +83,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final bytes = result.files.first.bytes;
     if (bytes == null) return;
-    final content = String.fromCharCodes(bytes);
+    var content = String.fromCharCodes(bytes);
 
     final sessionId = await config.getCurrentSessionId();
     if (sessionId == null) return;
+
+    // 解析说话人并让用户选择
+    final parsed = parseChat(content);
+    String? targetSpeaker;
+    if (parsed.speakers.isNotEmpty) {
+      targetSpeaker = await _showSpeakerDialog(parsed);
+      if (targetSpeaker != null) {
+        content = filterMessagesBySpeaker(content, targetSpeaker);
+      }
+    }
 
     try {
       final p = await ps.analyzeAndCreatePersonality(
         sessionId: sessionId,
         exName: _exName,
         chatHistory: content,
+        targetSpeaker: targetSpeaker,
       );
       setState(() => _personality = p);
       await config.setMode('import');
@@ -109,6 +121,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
+  }
+
+  Future<String?> _showSpeakerDialog(ChatParseResult parsed) async {
+    String selected = parsed.speakers.first.name;
+
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final speakers = parsed.speakers;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('选择模仿对象'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('检测到以下说话人，请选择你想让AI模仿的一方：',
+                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const SizedBox(height: 12),
+                    ...speakers.map((s) => ListTile(
+                          leading: Icon(
+                            selected == s.name
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                            color: selected == s.name
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.grey,
+                          ),
+                          title: Text(s.name,
+                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text('${s.messageCount} 条消息'),
+                          onTap: () => setDialogState(() => selected = s.name),
+                          dense: true,
+                        )),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, selected),
+                  child: Text('选择 $selected'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _resetApp() async {

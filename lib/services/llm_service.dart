@@ -241,15 +241,22 @@ class LlmService {
     return buffer.toString();
   }
 
-  /// 分析聊天记录，返回人格档案描述
-  Future<String> analyzeChatHistory(String chatText) async {
+  /// 分析聊天记录中指定说话人的风格，返回人格档案 JSON
+  /// [chatText] 只包含目标说话人的消息内容（已过滤）
+  /// [targetSpeaker] 目标说话人的名字（用于 prompt 上下文）
+  Future<String> analyzeChatHistory(String chatText, {String? targetSpeaker}) async {
     final apiKey = await _config.getApiKey();
     if (apiKey == null) throw Exception('请先设置 API Key');
+
+    final speakerHint = targetSpeaker != null
+        ? '【$targetSpeaker】'
+        : '目标说话人';
 
     final messages = [
       {
         'role': 'system',
-        'content': '''你是一个聊天风格分析师。请分析以下聊天记录中"对方"（非提问者）的说话风格。
+        'content': '''你是一个聊天风格分析师。请分析以下聊天记录中$speakerHint的说话风格。
+注意：这些消息全部来自同一个人（$speakerHint），请根据这些消息分析TA的性格。
 
 请从以下维度分析，输出 JSON 格式：
 {
@@ -274,7 +281,7 @@ class LlmService {
       },
       {
         'role': 'user',
-        'content': '请分析这段聊天记录：\n\n$chatText',
+        'content': '请分析$speakerHint的说话风格：\n\n$chatText',
       },
     ];
 
