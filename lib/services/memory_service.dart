@@ -72,10 +72,17 @@ class MemoryService {
             sessionId: sessionId,
             content: content,
             importance: importance,
-            sourceMsgIds: recent.map((m) => m.id?.toString()).join(','),
+            sourceMsgIds: recent.where((m) => m.id != null).map((m) => m.id.toString()).join(','),
           );
-          await _db.insertMemory(memory);
-          newMemories.add(memory);
+          final memId = await _db.insertMemory(memory);
+          newMemories.add(Memory(
+            id: memId,
+            sessionId: memory.sessionId,
+            content: memory.content,
+            importance: memory.importance,
+            sourceMsgIds: memory.sourceMsgIds,
+            createdAt: memory.createdAt,
+          ));
         }
       }
       return newMemories;

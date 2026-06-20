@@ -9,10 +9,10 @@ class MemoryScreen extends StatefulWidget {
   const MemoryScreen({super.key});
 
   @override
-  State<MemoryScreen> createState() => _MemoryScreenState();
+  State<MemoryScreen> createState() => MemoryScreenState();
 }
 
-class _MemoryScreenState extends State<MemoryScreen> {
+class MemoryScreenState extends State<MemoryScreen> {
   List<Memory> _memories = [];
   int _messageCount = 0;
   bool _loading = true;
@@ -23,12 +23,18 @@ class _MemoryScreenState extends State<MemoryScreen> {
     _loadMemories();
   }
 
+  /// 公开刷新方法，供 HomeScreen 在 tab 切换时调用
+  Future<void> refresh() => _loadMemories();
+
   Future<void> _loadMemories() async {
     final config = context.read<ConfigService>();
     final memoryService = context.read<MemoryService>();
 
     final sessionId = await config.getCurrentSessionId();
-    if (sessionId == null) return;
+    if (sessionId == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
 
     final memories = await memoryService.getAllMemories(sessionId);
     final stats = await memoryService.getStats(sessionId);
@@ -67,60 +73,64 @@ class _MemoryScreenState extends State<MemoryScreen> {
                       const SizedBox(height: 16),
                       Text(
                         '还没有记忆',
-                        style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+                        style:
+                            TextStyle(fontSize: 16, color: Colors.grey[500]),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         '多聊聊天，AI 会自动提取重要的记忆',
-                        style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+                        style:
+                            TextStyle(fontSize: 13, color: Colors.grey[400]),
                       ),
                     ],
                   ),
                 )
-              : Column(
-                  children: [
-                    // 统计卡片
-                    Container(
-                      margin: const EdgeInsets.all(16),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primaryContainer
-                            .withAlpha(80),
-                        borderRadius: BorderRadius.circular(16),
+              : RefreshIndicator(
+                  onRefresh: _loadMemories,
+                  child: Column(
+                    children: [
+                      // 统计卡片
+                      Container(
+                        margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primaryContainer
+                              .withAlpha(80),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _statItem('总消息', _messageCount.toString()),
+                            _statItem('记忆', _memories.length.toString()),
+                            _statItem(
+                              '平均重要性',
+                              _memories.isEmpty
+                                  ? '-'
+                                  : (_memories
+                                              .map((m) => m.importance)
+                                              .reduce((a, b) => a + b) /
+                                          _memories.length)
+                                      .toStringAsFixed(1),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _statItem('总消息', _messageCount.toString()),
-                          _statItem('记忆', _memories.length.toString()),
-                          _statItem(
-                            '平均重要性',
-                            _memories.isEmpty
-                                ? '-'
-                                : (_memories
-                                            .map((m) => m.importance)
-                                            .reduce((a, b) => a + b) /
-                                        _memories.length)
-                                    .toStringAsFixed(1),
-                          ),
-                        ],
+                      // 记忆列表
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _memories.length,
+                          itemBuilder: (context, index) {
+                            final mem = _memories[index];
+                            return _buildMemoryCard(mem);
+                          },
+                        ),
                       ),
-                    ),
-
-                    // 记忆列表
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _memories.length,
-                        itemBuilder: (context, index) {
-                          final mem = _memories[index];
-                          return _buildMemoryCard(mem);
-                        },
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
     );
   }
@@ -128,17 +138,11 @@ class _MemoryScreenState extends State<MemoryScreen> {
   Widget _statItem(String label, String value) {
     return Column(
       children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-        ),
+        Text(value,
+            style:
+                const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        Text(label,
+            style: TextStyle(fontSize: 12, color: Colors.grey[600])),
       ],
     );
   }
@@ -152,10 +156,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
           _importanceIcon(mem.importance),
           color: _importanceColor(mem.importance),
         ),
-        title: Text(
-          mem.content,
-          style: const TextStyle(fontSize: 14),
-        ),
+        title: Text(mem.content, style: const TextStyle(fontSize: 14)),
         subtitle: Text(
           '重要性: ${mem.importance}/10  ·  ${_formatDate(mem.createdAt)}',
           style: TextStyle(fontSize: 12, color: Colors.grey[500]),
@@ -170,15 +171,15 @@ class _MemoryScreenState extends State<MemoryScreen> {
                 content: Text('确定要忘记"${mem.content}"吗？'),
                 actions: [
                   TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('取消'),
-                  ),
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('取消')),
                   TextButton(
                     onPressed: () {
                       Navigator.pop(ctx);
-                      _deleteMemory(mem.id!);
+                      _deleteMemory(mem.id ?? 0);
                     },
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    style:
+                        TextButton.styleFrom(foregroundColor: Colors.red),
                     child: const Text('删除'),
                   ),
                 ],

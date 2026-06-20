@@ -1,16 +1,21 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 
-/// 聊天气泡组件
+/// 聊天气泡组件 — 支持文字和图片
 class ChatBubble extends StatelessWidget {
   final String content;
-  final bool isMe; // true = 我的消息（右对齐绿色），false = 对方消息（左对齐灰色）
+  final bool isMe;
   final String? time;
+  final String? imageBase64;
+  final bool isImage;
 
   const ChatBubble({
     super.key,
     required this.content,
     required this.isMe,
     this.time,
+    this.imageBase64,
+    this.isImage = false,
   });
 
   @override
@@ -67,16 +72,30 @@ class ChatBubble extends StatelessWidget {
                       bottomRight: Radius.circular(isMe ? 4 : 18),
                     ),
                   ),
-                  child: SelectableText(
-                    content,
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: isMe
-                          ? (isDark ? Colors.white : Colors.black87)
-                          : (isDark ? Colors.white : Colors.black87),
-                      height: 1.5,
-                    ),
-                  ),
+                  child: isImage && imageBase64 != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            base64Decode(imageBase64!),
+                            fit: BoxFit.cover,
+                            width: MediaQuery.of(context).size.width * 0.5,
+                            errorBuilder: (_, e, s) => const Icon(
+                              Icons.broken_image,
+                              size: 48,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        )
+                      : SelectableText(
+                          content,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: isMe
+                                ? (isDark ? Colors.white : Colors.black87)
+                                : (isDark ? Colors.white : Colors.black87),
+                            height: 1.5,
+                          ),
+                        ),
                 ),
                 if (time != null)
                   Padding(

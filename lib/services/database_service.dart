@@ -8,7 +8,7 @@ import '../models/personality.dart';
 class DatabaseService {
   static Database? _database;
   static const _dbName = 'cyber_ex.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   Future<Database> get database async {
     _database ??= await _initDatabase();
@@ -23,7 +23,17 @@ class DatabaseService {
       path,
       version: _dbVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute(
+          "ALTER TABLE messages ADD COLUMN message_type TEXT DEFAULT 'text'");
+      await db.execute(
+          'ALTER TABLE messages ADD COLUMN image_base64 TEXT');
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -32,7 +42,9 @@ class DatabaseService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id TEXT NOT NULL,
         role TEXT NOT NULL,
-        content TEXT NOT NULL,
+        message_type TEXT DEFAULT 'text',
+        content TEXT DEFAULT '',
+        image_base64 TEXT,
         created_at TEXT NOT NULL
       )
     ''');

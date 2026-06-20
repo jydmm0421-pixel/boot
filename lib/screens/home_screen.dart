@@ -17,6 +17,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   String _exName = 'TA';
+  final _memoryKey = GlobalKey<MemoryScreenState>();
 
   @override
   void initState() {
@@ -34,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final screens = [
       ChatScreen(exName: _exName),
-      const MemoryScreen(),
+      MemoryScreen(key: _memoryKey),
       const FortuneScreen(),
       SettingsScreen(onNameChanged: (name) {
         setState(() => _exName = name);
@@ -50,6 +51,10 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
           setState(() => _currentIndex = index);
+          // 切换到记忆 tab 时自动刷新
+          if (index == 1) {
+            _memoryKey.currentState?.refresh();
+          }
         },
         destinations: const [
           NavigationDestination(

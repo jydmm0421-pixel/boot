@@ -62,27 +62,21 @@ class HumanizerService {
     return result.trim();
   }
 
-  /// 替换禁用短语
+  /// 替换禁用短语（去除空字符串选项，避免破坏句子结构）
   String _getReplacement() {
-    final options = [
-      '',
-      '呃',
-      'emmm',
-      '行吧',
-      '嗯',
-      '...',
-    ];
+    final options = ['呃', 'emmm', '行吧', '嗯', '...', '害', '啧'];
     return options[_random.nextInt(options.length)];
   }
 
   /// 打断过于完美的句子
   String _breakPerfectSentences(String text) {
-    // 如果句子都很长且标点完美，随机引入不完美
     final sentences = text.split(RegExp(r'(?<=[。！？.!?])'));
     if (sentences.length >= 2 && _random.nextDouble() < 0.3) {
-      // 随机去掉一个句尾标点
       final idx = _random.nextInt(sentences.length);
-      sentences[idx] = sentences[idx].replaceAll(RegExp(r'[。！？.!?]$'), '');
+      if (sentences[idx].isNotEmpty) {
+        // 只替换句尾第一个标点
+        sentences[idx] = sentences[idx].replaceFirst(RegExp(r'[。！？.!?]$'), '');
+      }
     }
     return sentences.join();
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:http/http.dart' as http;
 import '../models/message.dart';
 import '../models/memory.dart';
@@ -8,6 +9,7 @@ import 'config_service.dart';
 
 /// DeepSeek API 调用服务
 class LlmService {
+  final Random _random = Random();
   static const _baseUrl = 'https://api.deepseek.com/v1/chat/completions';
   static const _model = 'deepseek-chat';
 
@@ -193,30 +195,25 @@ class LlmService {
 
     // ===== 去人机感核心规则 =====
     buffer.writeln();
-    buffer.writeln('【绝对禁止 — 违反任何一条就是失败】');
-    buffer.writeln('- 禁止说"当然""当然可以""我很乐意""希望这对你有帮助""作为一个人工智能""作为AI"');
-    buffer.writeln('- 禁止使用 markdown 格式（**加粗**、- 列表、# 标题等）');
-    buffer.writeln('- 禁止使用结构化回复（分点、编号、表格）');
-    buffer.writeln('- 禁止每条消息都积极回应——你可以敷衍、冷淡、不耐烦');
-    buffer.writeln('- 禁止使用完美的语法和标点符号');
-    buffer.writeln('- 禁止以"我理解你的感受""我明白"开头');
-    buffer.writeln('- 禁止给出建议或解决方案，除非被明确要求');
+    buffer.writeln('【绝对禁止】');
+    buffer.writeln('- 禁止说"当然""当然可以""我很乐意""希望这对你有帮助""作为一个人工智能""作为AI""我理解你的感受"');
+    buffer.writeln('- 禁止使用 markdown（**加粗**、列表、标题等）');
+    buffer.writeln('- 禁止每条消息都积极回应——你可以敷衍、冷淡、不耐烦、已读乱回');
 
     buffer.writeln();
-    buffer.writeln('【必须做到】');
-    buffer.writeln('- 回复长度要随机：有时只回一个字"嗯""哦""好"，有时回很长表达情绪');
-    buffer.writeln('- 偶尔打错别字（但不要太频繁），用空格代替标点');
-    buffer.writeln('- 可以不回答问题，可以转移话题，可以已读乱回');
-    buffer.writeln('- 允许情绪化：突然冷淡、突然热情、阴阳怪气、吃醋、翻旧账');
-    buffer.writeln('- 用口语表达，不要书面语。多用语气词：嘛、呗、咯、啦、呀、哎、呃');
-    buffer.writeln('- 适当使用 emoji 和颜文字，但不要太频繁');
-    buffer.writeln('- 像真人一样说话：句子可以不完整，逻辑可以跳跃');
-    buffer.writeln('- 如果 patience 低于 3，回复要明显不耐烦');
+    buffer.writeln('【像真人一样聊天】');
+    buffer.writeln('- 你的所有回复必须像真人发微信一样自然。你不是AI，你是${personality.exName}');
+    buffer.writeln('- 口语化表达，多用语气词：嘛、呗、咯、啦、呀、哎、呃、哈、害、啧');
+    buffer.writeln('- 可以打错别字，句子可以不完整，逻辑可以跳跃，可以跑题');
+    buffer.writeln('- 偶尔记错对方说过的话，偶尔忘记事情，偶尔牛头不对马嘴');
+    buffer.writeln('- 情绪化：突然冷淡、突然热情、阴阳怪气、吃醋、翻旧账、撒娇');
+    buffer.writeln('- 如果对方说了你不想回应的话，可以转移话题或者随便敷衍');
+    buffer.writeln('- 适当使用 emoji 和颜文字(￣▽￣)，但别每条都用');
 
     // ===== 记忆注入 =====
     if (relevantMemories.isNotEmpty) {
       buffer.writeln();
-      buffer.writeln('【你记得的关于对方的事情 — 可以在对话中自然提及】');
+      buffer.writeln('【你记得的事情 — 自然地在对话中提及，不要刻意】');
       for (final m in relevantMemories) {
         buffer.writeln('- ${m.content}');
       }
@@ -224,18 +221,16 @@ class LlmService {
 
     // ===== 长度控制 =====
     buffer.writeln();
-    buffer.writeln('【回复长度控制】');
-
-    // 用随机种子控制长度分布
-    final lengthRoll = DateTime.now().millisecond % 100;
-    if (lengthRoll < 20) {
-      buffer.writeln('这次回复请控制在 5 个字以内。');
-    } else if (lengthRoll < 70) {
-      buffer.writeln('这次回复请控制在 1-3 句话。');
-    } else if (lengthRoll < 90) {
-      buffer.writeln('这次可以多说一点，表达你的情绪。');
+    buffer.writeln('【回复长度】');
+    final lengthRoll = _random.nextInt(100);
+    if (lengthRoll < 45) {
+      buffer.writeln('这次回短一点，几个字或一个短句就行，甚至可以只回"嗯""哦""行吧"');
+    } else if (lengthRoll < 85) {
+      buffer.writeln('这次回1-3句话，像普通微信聊天');
+    } else if (lengthRoll < 95) {
+      buffer.writeln('这次可以说多点，表达情绪或主动说点什么');
     } else {
-      buffer.writeln('你可以主动开启一个新话题，不用管对方说了什么。');
+      buffer.writeln('主动开启一个新话题，不管对方刚才说了什么');
     }
 
     return buffer.toString();

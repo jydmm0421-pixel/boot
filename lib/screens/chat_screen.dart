@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/message.dart';
@@ -76,7 +78,7 @@ class ChatScreenState extends State<ChatScreen> {
   Future<void> _sendMessage(String text) async {
     if (_sessionId == null || _isLoading) return;
 
-    final userMsg = Message(
+    var userMsg = Message(
       sessionId: _sessionId!,
       role: 'user',
       content: text,
@@ -95,7 +97,8 @@ class ChatScreenState extends State<ChatScreen> {
     final humanizer = context.read<HumanizerService>();
     final personalityService = context.read<PersonalityService>();
 
-    await db.insertMessage(userMsg);
+    final userMsgId = await db.insertMessage(userMsg);
+    userMsg = userMsg.copyWith(id: userMsgId);
 
     try {
       // 获取最新人格
@@ -191,6 +194,31 @@ class ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _sendImage(File file) async {
+    if (_sessionId == null || _isLoading) return;
+
+    final db = context.read<DatabaseService>();
+    final bytes = await file.readAsBytes();
+    final base64 = base64Encode(bytes);
+
+    final imgMsg = Message(
+      sessionId: _sessionId!,
+      role: 'user',
+      messageType: 'image',
+      imageBase64: base64,
+    );
+
+    setState(() => _messages.add(imgMsg));
+    _scrollToBottom();
+
+    final imgId = await db.insertMessage(imgMsg);
+    imgMsg.copyWith(id: imgId);
+
+    // 可选：将图片发给 AI 让 TA 回应
+    // 这里简化处理：AI 回复文字
+    _sendMessage('[图片]');
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -240,6 +268,8 @@ class ChatScreenState extends State<ChatScreen> {
                       return ChatBubble(
                         content: msg.content,
                         isMe: msg.role == 'user',
+                        isImage: msg.isImage,
+                        imageBase64: msg.imageBase64,
                         time:
                             '${msg.createdAt.hour.toString().padLeft(2, '0')}:${msg.createdAt.minute.toString().padLeft(2, '0')}',
                       );
@@ -250,6 +280,7 @@ class ChatScreenState extends State<ChatScreen> {
           // 输入栏
           ChatInput(
             onSend: _sendMessage,
+            onSendImage: _sendImage,
             enabled: !_isLoading,
           ),
         ],
