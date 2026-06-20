@@ -8,6 +8,9 @@ class ConfigService {
   static const _keySessionId = 'current_session_id';
   static const _keyMode = 'personality_mode';
   static const _keyExName = 'ex_name';
+  static const _keyImageGenKey = 'image_gen_api_key';
+  static const _keyUserAvatar = 'user_avatar_base64';
+  static const _keyBotAvatar = 'bot_avatar_base64';
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -67,5 +70,37 @@ class ConfigService {
   Future<void> setExName(String name) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyExName, name);
+  }
+
+  // ---- 生图 API Key ----
+
+  Future<String?> getImageGenApiKey() async {
+    return await _secureStorage.read(key: _keyImageGenKey);
+  }
+
+  Future<void> setImageGenApiKey(String key) async {
+    await _secureStorage.write(key: _keyImageGenKey, value: key);
+  }
+
+  // ---- 头像（base64，存在 SharedPreferences） ----
+
+  Future<String?> getUserAvatar() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyUserAvatar);
+  }
+
+  Future<void> setUserAvatar(String base64) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyUserAvatar, base64);
+  }
+
+  Future<String?> getBotAvatar() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyBotAvatar);
+  }
+
+  Future<void> setBotAvatar(String base64) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyBotAvatar, base64);
   }
 }

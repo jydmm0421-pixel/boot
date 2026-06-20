@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/config_service.dart';
+import '../services/llm_service.dart';
+import '../services/image_gen_service.dart';
 import '../services/personality_service.dart';
 import '../models/personality.dart';
 import '../utils/chat_parser.dart';
@@ -21,9 +26,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _exName = 'TA';
   String _mode = '';
   bool _hasApiKey = false;
+  bool _hasImageGenKey = false;
   Personality? _personality;
+  String? _userAvatar;
+  String? _botAvatar;
+  bool _generatingAvatar = false;
 
   final _nameController = TextEditingController();
+  final _imageGenKeyController = TextEditingController();
 
   @override
   void initState() {
@@ -39,6 +49,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final mode = await config.getMode();
     final apiKey = await config.getApiKey();
     final sessionId = await config.getCurrentSessionId();
+    final userAvatar = await config.getUserAvatar();
+    final botAvatar = await config.getBotAvatar();
+    final imageGenKey = await config.getImageGenApiKey();
 
     Personality? p;
     if (sessionId != null) {
@@ -49,8 +62,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _exName = name;
       _mode = mode ?? '';
       _hasApiKey = apiKey != null && apiKey.isNotEmpty;
+      _hasImageGenKey = imageGenKey != null && imageGenKey.isNotEmpty;
       _personality = p;
+      _userAvatar = userAvatar;
+      _botAvatar = botAvatar;
       _nameController.text = name;
+      _imageGenKeyController.text = imageGenKey ?? '';
     });
   }
 
@@ -177,6 +194,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _pickUserAvatar() async {
+    final config = context.read<ConfigService>();
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+        source: ImageSource.gallery, maxWidth: 256, maxHeight: 256, imageQuality: 80);
+    if (file == null) return;
+
+    final bytes = await File(file.path).readAsBytes();
+    final base64 = base64Encode(bytes);
+    await config.setUserAvatar(base64);
+    if (mounted) setState(() => _userAvatar = base64);
+  }
+
+  Future<void> _generateBotAvatar() async {
+    final config = context.read<ConfigService>();
+    final messenger = ScaffoldMessenger.of(context);
+    final apiKey = await config.getImageGenApiKey();
+    if (apiKey == null || apiKey.isEmpty) {
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('请先设置生图 API Key'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+    if (_personality == null) {
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('请先完成人格设置'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+
+    setState(() => _generatingAvatar = true);
+
+    try {
+      // 用 LLM 生成头像 prompt
+      final llm = LlmService();
+      final promptResult = await llm.chat(
+        sessionId: 'avatar_gen',
+        userMessage: '请根据以下性格生成一个头像描述（30字以内，用于AI生图）：${_personality!.basePersonality}，${_personality!.speakingStyle}',
+        personality: _personality!,
+        relevantMemories: [],
+        moodParams: {},
+        recentHistory: [],
+      );
+
+      final prompt = '日系动漫头像，正面半身，$promptResult，简洁干净风格';
+
+      final genService = ImageGenService();
+      final imageBytes = await genService.generateImage(prompt, apiKey: apiKey);
+      final base64 = base64Encode(imageBytes);
+
+      await config.setBotAvatar(base64);
+      if (mounted) {
+        setState(() {
+          _botAvatar = base64;
+          _generatingAvatar = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('机器人头像已生成！')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _generatingAvatar = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('生成失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveImageGenKey() async {
+    final key = _imageGenKeyController.text.trim();
+    await context.read<ConfigService>().setImageGenApiKey(key);
+    setState(() => _hasImageGenKey = key.isNotEmpty);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('生图 API Key 已保存')),
+      );
+    }
+  }
+
   Future<void> _resetApp() async {
     final config = context.read<ConfigService>();
 
@@ -213,6 +315,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _imageGenKeyController.dispose();
     super.dispose();
   }
 
@@ -323,6 +426,111 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ],
+
+          const SizedBox(height: 24),
+
+          // 头像
+          _buildSection('头像'),
+          const SizedBox(height: 8),
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  // 用户头像
+                  Column(
+                    children: [
+                      GestureDetector(
+                        onTap: _pickUserAvatar,
+                        child: CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Colors.grey[300],
+                          backgroundImage: _userAvatar != null
+                              ? MemoryImage(base64Decode(_userAvatar!))
+                              : null,
+                          child: _userAvatar == null
+                              ? const Icon(Icons.person, color: Colors.white)
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text('我的头像', style: TextStyle(fontSize: 11)),
+                    ],
+                  ),
+                  const Spacer(),
+                  Icon(Icons.swap_horiz, color: Colors.grey[400]),
+                  const Spacer(),
+                  // 机器人头像
+                  Column(
+                    children: [
+                      GestureDetector(
+                        onTap: _generateBotAvatar,
+                        child: CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                          backgroundImage: _botAvatar != null
+                              ? MemoryImage(base64Decode(_botAvatar!))
+                              : null,
+                          child: _generatingAvatar
+                              ? const SizedBox(
+                                  width: 20, height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2))
+                              : _botAvatar == null
+                                  ? const Icon(Icons.smart_toy, color: Colors.white)
+                                  : null,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(_generatingAvatar ? '生成中...' : '机器人头像',
+                          style: const TextStyle(fontSize: 11)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_botAvatar == null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: Text('点击右侧头像，AI 根据人格自动生成',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+            ),
+
+          const SizedBox(height: 24),
+
+          // 生图 API Key
+          _buildSection('生图 API (Doubao-Seedance)'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _imageGenKeyController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    hintText: '输入火山方舟 API Key',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(Icons.image),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(onPressed: _saveImageGenKey, child: const Text('保存')),
+            ],
+          ),
+          ListTile(
+            leading: Icon(
+              _hasImageGenKey ? Icons.check_circle : Icons.info_outline,
+              color: _hasImageGenKey ? Colors.green : Colors.grey,
+              size: 20,
+            ),
+            title: Text(
+              _hasImageGenKey ? '生图 API Key 已设置' : '未设置（无法使用生图功能）',
+              style: const TextStyle(fontSize: 13),
+            ),
+            dense: true,
+          ),
 
           const SizedBox(height: 32),
 

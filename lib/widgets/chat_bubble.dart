@@ -8,6 +8,7 @@ class ChatBubble extends StatelessWidget {
   final String? time;
   final String? imageBase64;
   final bool isImage;
+  final String? avatarBase64; // 头像 base64
 
   const ChatBubble({
     super.key,
@@ -16,6 +17,7 @@ class ChatBubble extends StatelessWidget {
     this.time,
     this.imageBase64,
     this.isImage = false,
+    this.avatarBase64,
   });
 
   @override
@@ -35,11 +37,13 @@ class ChatBubble extends StatelessWidget {
               child: CircleAvatar(
                 radius: 18,
                 backgroundColor: isDark ? Colors.grey[700] : Colors.grey[300],
-                child: Icon(
-                  Icons.person,
-                  size: 20,
-                  color: isDark ? Colors.white70 : Colors.grey[600],
-                ),
+                backgroundImage: avatarBase64 != null
+                    ? MemoryImage(base64Decode(avatarBase64!))
+                    : null,
+                child: avatarBase64 == null
+                    ? Icon(Icons.person, size: 20,
+                        color: isDark ? Colors.white70 : Colors.grey[600])
+                    : null,
               ),
             ),
 
@@ -119,7 +123,12 @@ class ChatBubble extends StatelessWidget {
               child: CircleAvatar(
                 radius: 18,
                 backgroundColor: const Color(0xFF07C160).withAlpha(200),
-                child: const Icon(Icons.person, size: 20, color: Colors.white),
+                backgroundImage: avatarBase64 != null
+                    ? MemoryImage(base64Decode(avatarBase64!))
+                    : null,
+                child: avatarBase64 == null
+                    ? const Icon(Icons.person, size: 20, color: Colors.white)
+                    : null,
               ),
             ),
         ],

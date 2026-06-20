@@ -18,8 +18,15 @@ import '../widgets/typing_indicator.dart';
 /// 主聊天页
 class ChatScreen extends StatefulWidget {
   final String exName;
+  final String? userAvatar;
+  final String? botAvatar;
 
-  const ChatScreen({super.key, required this.exName});
+  const ChatScreen({
+    super.key,
+    required this.exName,
+    this.userAvatar,
+    this.botAvatar,
+  });
 
   @override
   State<ChatScreen> createState() => ChatScreenState();
@@ -261,6 +268,7 @@ class ChatScreenState extends State<ChatScreen> {
                         return ChatBubble(
                           content: _streamingText,
                           isMe: false,
+                          avatarBase64: widget.botAvatar,
                         );
                       }
                       // 正常消息
@@ -270,6 +278,7 @@ class ChatScreenState extends State<ChatScreen> {
                         isMe: msg.role == 'user',
                         isImage: msg.isImage,
                         imageBase64: msg.imageBase64,
+                        avatarBase64: msg.role == 'user' ? widget.userAvatar : widget.botAvatar,
                         time:
                             '${msg.createdAt.hour.toString().padLeft(2, '0')}:${msg.createdAt.minute.toString().padLeft(2, '0')}',
                       );

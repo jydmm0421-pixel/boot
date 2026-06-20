@@ -17,24 +17,34 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   String _exName = 'TA';
+  String? _userAvatar;
+  String? _botAvatar;
   final _memoryKey = GlobalKey<MemoryScreenState>();
 
   @override
   void initState() {
     super.initState();
-    _loadName();
+    _loadSettings();
   }
 
-  Future<void> _loadName() async {
+  Future<void> _loadSettings() async {
     final config = context.read<ConfigService>();
     final name = await config.getExName();
-    if (mounted) setState(() => _exName = name);
+    final userAvatar = await config.getUserAvatar();
+    final botAvatar = await config.getBotAvatar();
+    if (mounted) {
+      setState(() {
+        _exName = name;
+        _userAvatar = userAvatar;
+        _botAvatar = botAvatar;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final screens = [
-      ChatScreen(exName: _exName),
+      ChatScreen(exName: _exName, userAvatar: _userAvatar, botAvatar: _botAvatar),
       MemoryScreen(key: _memoryKey),
       const FortuneScreen(),
       SettingsScreen(onNameChanged: (name) {
