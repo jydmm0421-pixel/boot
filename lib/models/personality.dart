@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// 人格模型 — 机器人的性格档案
 class Personality {
   final int? id;
@@ -52,16 +54,18 @@ class Personality {
   }
 
   static Map<String, double> _traitsFromJson(String json) {
-    final map = <String, double>{};
-    if (json.isEmpty || json == '{}') return map;
-    final content = json.substring(1, json.length - 1);
-    for (final part in content.split(',')) {
-      final kv = part.split(':');
-      if (kv.length == 2) {
-        map[kv[0].trim().replaceAll('"', '')] = double.tryParse(kv[1].trim()) ?? 5.0;
+    if (json.isEmpty || json == '{}') return <String, double>{};
+    try {
+      final decoded = jsonDecode(json) as Map<String, dynamic>;
+      final map = <String, double>{};
+      for (final entry in decoded.entries) {
+        final value = (entry.value as num?)?.toDouble();
+        if (value != null) map[entry.key.toString()] = value;
       }
+      return map;
+    } catch (_) {
+      return <String, double>{};
     }
-    return map;
   }
 
   factory Personality.fromMap(Map<String, dynamic> map) {

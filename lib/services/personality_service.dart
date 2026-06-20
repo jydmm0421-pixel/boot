@@ -1,5 +1,6 @@
 import 'dart:convert';
 import '../models/personality.dart';
+import '../utils/json_utils.dart';
 import 'database_service.dart';
 import 'llm_service.dart';
 
@@ -45,7 +46,7 @@ class PersonalityService {
 
     // 解析 AI 返回的 JSON
     try {
-      final json = _cleanJson(analysis);
+      final json = cleanJson(analysis);
       final data = jsonDecode(json);
 
       final personality = data['personality'] as String? ?? '';
@@ -164,14 +165,4 @@ class PersonalityService {
     }
   }
 
-  String _cleanJson(String raw) {
-    String s = raw.trim();
-    if (s.startsWith('```')) {
-      s = s.substring(s.indexOf('\n') + 1);
-      if (s.endsWith('```')) {
-        s = s.substring(0, s.lastIndexOf('```'));
-      }
-    }
-    return s.trim();
-  }
 }

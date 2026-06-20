@@ -1,6 +1,7 @@
 import 'dart:convert';
 import '../models/message.dart';
 import '../models/memory.dart';
+import '../utils/json_utils.dart';
 import 'database_service.dart';
 import 'llm_service.dart';
 
@@ -59,7 +60,7 @@ class MemoryService {
     if (result == null) return [];
 
     try {
-      final data = jsonDecode(_cleanJson(result));
+      final data = jsonDecode(cleanJson(result));
       if (data['has_memory'] != true) return [];
 
       final newMemories = <Memory>[];
@@ -97,8 +98,8 @@ class MemoryService {
       return allMemories.take(count).toList();
     }
 
-    // 简单关键词匹配
-    final keywords = userInput.split('').toSet().toList();
+    // 基于双字关键词匹配（中文）+ 单词匹配（英文）
+    final keywords = _extractKeywords(userInput);
     final scored = <Memory, int>{};
 
     for (final mem in allMemories) {
@@ -133,16 +134,36 @@ class MemoryService {
     return await _db.getStats(sessionId);
   }
 
-  /// 清理 JSON 字符串（LLM 有时会在 JSON 外加注释）
-  String _cleanJson(String raw) {
-    String s = raw.trim();
-    // 移除 markdown 代码块标记
-    if (s.startsWith('```')) {
-      s = s.substring(s.indexOf('\n') + 1);
-      if (s.endsWith('```')) {
-        s = s.substring(0, s.lastIndexOf('```'));
+  /// 从用户输入中提取关键词（中文双字词 + 英文单词）
+  List<String> _extractKeywords(String input) {
+    final keywords = <String>{};
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return [];
+
+    // 按空格/标点分割英文单词和中文片段
+    final segments = trimmed.split(RegExp(r'\s+'));
+
+    for (final seg in segments) {
+      if (seg.isEmpty) continue;
+
+      // 判断是否为纯英文/数字
+      final isAscii = seg.codeUnits.every((c) => c < 128);
+      if (isAscii) {
+        // 英文单词直接作为关键词
+        keywords.add(seg.toLowerCase());
+      } else {
+        // 中文部分使用双字词
+        if (seg.length <= 2) {
+          keywords.add(seg);
+        } else {
+          for (int i = 0; i < seg.length - 1; i++) {
+            keywords.add(seg.substring(i, i + 2));
+          }
+        }
       }
     }
-    return s.trim();
+
+    return keywords.toList();
   }
+
 }

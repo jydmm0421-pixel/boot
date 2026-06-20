@@ -337,10 +337,13 @@ class _SetupScreenState extends State<SetupScreen> {
         ),
         child: Row(
           children: [
-            Radio<String>(
-              value: value,
-              groupValue: _mode,
-              onChanged: (v) => setState(() => _mode = v!),
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.grey,
             ),
             const SizedBox(width: 4),
             Expanded(

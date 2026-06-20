@@ -40,14 +40,15 @@ class ChatScreenState extends State<ChatScreen> {
 
   Future<void> _init() async {
     final config = context.read<ConfigService>();
+    final personalityService = context.read<PersonalityService>();
+    final db = context.read<DatabaseService>();
+
     final sessionId = await config.getCurrentSessionId();
     if (sessionId == null) return;
 
-    final personalityService = context.read<PersonalityService>();
     final personality = await personalityService.getPersonality(sessionId);
 
     // 加载历史消息
-    final db = context.read<DatabaseService>();
     final messages = await db.getRecentMessages(sessionId, count: 60);
 
     setState(() {
@@ -89,14 +90,14 @@ class ChatScreenState extends State<ChatScreen> {
 
     // 保存用户消息
     final db = context.read<DatabaseService>();
+    final llm = context.read<LlmService>();
+    final memoryService = context.read<MemoryService>();
+    final humanizer = context.read<HumanizerService>();
+    final personalityService = context.read<PersonalityService>();
+
     await db.insertMessage(userMsg);
 
     try {
-      final llm = context.read<LlmService>();
-      final memoryService = context.read<MemoryService>();
-      final humanizer = context.read<HumanizerService>();
-      final personalityService = context.read<PersonalityService>();
-
       // 获取最新人格
       final p = _personality ??
           await personalityService.getPersonality(_sessionId!);

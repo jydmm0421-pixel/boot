@@ -32,6 +32,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final config = context.read<ConfigService>();
+    final ps = context.read<PersonalityService>();
+
     final name = await config.getExName();
     final mode = await config.getMode();
     final apiKey = await config.getApiKey();
@@ -39,7 +41,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     Personality? p;
     if (sessionId != null) {
-      final ps = context.read<PersonalityService>();
       p = await ps.getPersonality(sessionId);
     }
 
@@ -69,6 +70,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _importChatHistory() async {
+    final config = context.read<ConfigService>();
+    final ps = context.read<PersonalityService>();
+
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['txt', 'csv'],
@@ -80,18 +84,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (bytes == null) return;
     final content = String.fromCharCodes(bytes);
 
-    final sessionId = await context.read<ConfigService>().getCurrentSessionId();
+    final sessionId = await config.getCurrentSessionId();
     if (sessionId == null) return;
 
     try {
-      final ps = context.read<PersonalityService>();
       final p = await ps.analyzeAndCreatePersonality(
         sessionId: sessionId,
         exName: _exName,
         chatHistory: content,
       );
       setState(() => _personality = p);
-      await context.read<ConfigService>().setMode('import');
+      await config.setMode('import');
       setState(() => _mode = 'import');
 
       if (mounted) {
@@ -109,6 +112,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _resetApp() async {
+    final config = context.read<ConfigService>();
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -129,7 +134,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (confirmed == true) {
-      final config = context.read<ConfigService>();
       await config.setSetupComplete(false);
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(

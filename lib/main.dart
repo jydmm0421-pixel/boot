@@ -1,32 +1,34 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:provider/provider.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:dart_iztro/dart_iztro.dart';
 import 'services/config_service.dart';
 import 'services/database_service.dart';
 import 'services/llm_service.dart';
 import 'services/memory_service.dart';
 import 'services/personality_service.dart';
+import 'services/fortune_service.dart';
 import 'services/humanizer_service.dart';
 import 'app.dart';
+import 'database_init_stub.dart'
+    if (dart.library.io) 'database_init_io.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 桌面端需要用 FFI 初始化 databaseFactory，否则会报错：
-  // "databaseFactory not initialized"
-  if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.linux ||
-      defaultTargetPlatform == TargetPlatform.macOS)) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
+  // 初始化 dart_iztro 的 GetX 翻译服务（必须在使用算命功能前调用）
+  IztroTranslationService.init(initialLocale: 'zh_CN');
+  Get.addTranslations(IztroTranslationService().keys);
+
+  // 桌面端需要用 FFI 初始化 databaseFactory
+  initDatabaseFactory();
 
   final configService = ConfigService();
   final databaseService = DatabaseService();
   final llmService = LlmService();
   final memoryService = MemoryService();
   final personalityService = PersonalityService();
+  final fortuneService = FortuneService();
   final humanizerService = HumanizerService();
 
   runApp(
@@ -37,6 +39,7 @@ void main() {
         Provider<LlmService>.value(value: llmService),
         Provider<MemoryService>.value(value: memoryService),
         Provider<PersonalityService>.value(value: personalityService),
+        Provider<FortuneService>.value(value: fortuneService),
         Provider<HumanizerService>.value(value: humanizerService),
       ],
       child: const CyberExApp(),

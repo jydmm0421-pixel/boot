@@ -25,10 +25,11 @@ class _MemoryScreenState extends State<MemoryScreen> {
 
   Future<void> _loadMemories() async {
     final config = context.read<ConfigService>();
+    final memoryService = context.read<MemoryService>();
+
     final sessionId = await config.getCurrentSessionId();
     if (sessionId == null) return;
 
-    final memoryService = context.read<MemoryService>();
     final memories = await memoryService.getAllMemories(sessionId);
     final stats = await memoryService.getStats(sessionId);
 

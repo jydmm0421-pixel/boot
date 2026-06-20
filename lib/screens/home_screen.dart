@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/config_service.dart';
 import 'chat_screen.dart';
+import 'fortune_screen.dart';
 import 'memory_screen.dart';
 import 'settings_screen.dart';
 
@@ -34,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final screens = [
       ChatScreen(exName: _exName),
       const MemoryScreen(),
+      const FortuneScreen(),
       SettingsScreen(onNameChanged: (name) {
         setState(() => _exName = name);
       }),
@@ -59,6 +61,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.psychology_outlined),
             selectedIcon: Icon(Icons.psychology),
             label: '记忆',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.auto_awesome_outlined),
+            selectedIcon: Icon(Icons.auto_awesome),
+            label: '命盘',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),

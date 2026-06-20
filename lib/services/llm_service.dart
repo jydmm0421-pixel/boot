@@ -56,7 +56,7 @@ class LlmService {
     }
   }
 
-  /// 流式调用 — 返回 Stream<String>，每次吐出一个文本片段
+  /// 流式调用 — 返回 Stream，每次吐出一个文本片段
   Stream<String> chatStream({
     required String sessionId,
     required String userMessage,
@@ -93,6 +93,12 @@ class LlmService {
       });
 
       final response = await client.send(request);
+
+      if (response.statusCode != 200) {
+        final errorBody = await response.stream.bytesToString();
+        throw Exception('API 调用失败: ${response.statusCode} $errorBody');
+      }
+
       final stream = response.stream
           .transform(utf8.decoder)
           .transform(const LineSplitter());
@@ -346,5 +352,60 @@ class LlmService {
       return data['choices'][0]['message']['content'] as String;
     }
     return null;
+  }
+
+  // ==================== 通用工具方法 ====================
+
+  /// 创建一个 HTTP Client（调用方负责关闭）
+  static http.Client createClient() => http.Client();
+
+  /// 通用流式请求：发送自定义 messages 并返回 Stream of String
+  static Stream<String> sendStream(
+    http.Client client,
+    String apiKey,
+    List<Map<String, dynamic>> messages, {
+    double temperature = 0.7,
+    int maxTokens = 1024,
+  }) async* {
+    final request = http.Request('POST', Uri.parse(_baseUrl));
+    request.headers.addAll({
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $apiKey',
+    });
+    request.body = jsonEncode({
+      'model': _model,
+      'messages': messages,
+      'temperature': temperature,
+      'max_tokens': maxTokens,
+      'top_p': 0.95,
+      'stream': true,
+    });
+
+    final response = await client.send(request);
+
+    if (response.statusCode != 200) {
+      final errorBody = await response.stream.bytesToString();
+      throw Exception('API 调用失败: ${response.statusCode} $errorBody');
+    }
+
+    final stream = response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+
+    await for (final line in stream) {
+      if (line.startsWith('data: ')) {
+        final jsonStr = line.substring(6);
+        if (jsonStr == '[DONE]') break;
+        try {
+          final data = jsonDecode(jsonStr);
+          final delta = data['choices']?[0]?['delta']?['content'];
+          if (delta != null) {
+            yield delta as String;
+          }
+        } catch (_) {
+          // 忽略解析错误
+        }
+      }
+    }
   }
 }
